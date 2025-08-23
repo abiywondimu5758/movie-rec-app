@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { Skeleton } from '../ui/skeleton';
 import { 
   Users, 
   UserPlus, 
@@ -19,9 +20,11 @@ import {
 } from 'lucide-react';
 import { collection, query, where, getDocs, getDoc, addDoc, updateDoc, doc, deleteDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { useToast } from '../../hooks/use-toast';
 
 const Friends = () => {
   const { currentUser } = useAuth();
+  const { toast } = useToast();
   const [friends, setFriends] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
   const [sentRequests, setSentRequests] = useState([]);
@@ -32,6 +35,7 @@ const Friends = () => {
   const [activeTab, setActiveTab] = useState('friends');
   const [sendingRequests, setSendingRequests] = useState(new Set());
   const [userFriendshipStatus, setUserFriendshipStatus] = useState({});
+  const [actionLoading, setActionLoading] = useState(new Set());
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -304,16 +308,28 @@ const Friends = () => {
         const friendshipData = existingFriendship.data();
         
         if (friendshipData.status === 'accepted') {
-          alert('You are already friends with this user!');
+          toast({
+            title: "Already Friends",
+            description: "You are already friends with this user!",
+            variant: "default",
+          });
           return;
         }
         
         // Check if there's already a pending request
         if (friendshipData.status === 'pending') {
           if (friendshipData.fromUser === currentUser.uid) {
-            alert('You have already sent a friend request to this user!');
+            toast({
+              title: "Request Already Sent",
+              description: "You have already sent a friend request to this user!",
+              variant: "default",
+            });
           } else {
-            alert('This user has already sent you a friend request. Please check your "Requests" tab to accept or reject it.');
+            toast({
+              title: "Request Received",
+              description: "This user has already sent you a friend request. Please check your 'Requests' tab to accept or reject it.",
+              variant: "default",
+            });
           }
           return;
         }
@@ -333,11 +349,19 @@ const Friends = () => {
       setSearchResults([]);
       setSearchQuery('');
       
-      // Show success feedback (you can add a toast notification here later)
-      alert('Friend request sent successfully!');
+      // Show success feedback
+      toast({
+        title: "Friend Request Sent",
+        description: "Your friend request has been sent successfully!",
+        variant: "success",
+      });
     } catch (error) {
       console.error('Error sending friend request:', error);
-      alert('Failed to send friend request. Please try again.');
+      toast({
+        title: "Error",
+        description: "Failed to send friend request. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       // Remove from sending requests set
       setSendingRequests(prev => {
@@ -346,11 +370,14 @@ const Friends = () => {
         return newSet;
       });
     }
-  }, [currentUser, fetchFriendsData, sendingRequests]);
+  }, [currentUser, fetchFriendsData, sendingRequests, toast]);
 
   // Accept friend request
   const acceptFriendRequest = useCallback(async (requestId, fromUserId) => {
     if (!currentUser) return;
+    
+    // Add to action loading set
+    setActionLoading(prev => new Set(prev).add(`accept-${requestId}`));
     
     try {
       const requestRef = doc(db, 'friendships', requestId);
@@ -361,40 +388,117 @@ const Friends = () => {
       });
       
       fetchFriendsData();
+      toast({
+        title: "Friend Request Accepted",
+        description: "You are now friends!",
+        variant: "success",
+      });
     } catch (error) {
       console.error('Error accepting friend request:', error);
+      toast({
+        title: "Error",
+        description: "Failed to accept friend request. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      // Remove from action loading set
+      setActionLoading(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(`accept-${requestId}`);
+        return newSet;
+      });
     }
-  }, [currentUser, fetchFriendsData]);
+  }, [currentUser, fetchFriendsData, toast]);
 
   // Reject friend request
   const rejectFriendRequest = useCallback(async (requestId) => {
+    // Add to action loading set
+    setActionLoading(prev => new Set(prev).add(`reject-${requestId}`));
+    
     try {
       await deleteDoc(doc(db, 'friendships', requestId));
       fetchFriendsData();
+      toast({
+        title: "Friend Request Rejected",
+        description: "The friend request has been rejected.",
+        variant: "default",
+      });
     } catch (error) {
       console.error('Error rejecting friend request:', error);
+      toast({
+        title: "Error",
+        description: "Failed to reject friend request. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      // Remove from action loading set
+      setActionLoading(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(`reject-${requestId}`);
+        return newSet;
+      });
     }
-  }, [fetchFriendsData]);
+  }, [fetchFriendsData, toast]);
 
   // Remove friend
   const removeFriend = useCallback(async (friendshipId) => {
+    // Add to action loading set
+    setActionLoading(prev => new Set(prev).add(`remove-${friendshipId}`));
+    
     try {
       await deleteDoc(doc(db, 'friendships', friendshipId));
       fetchFriendsData();
+      toast({
+        title: "Friend Removed",
+        description: "Friend has been removed from your list.",
+        variant: "default",
+      });
     } catch (error) {
       console.error('Error removing friend:', error);
+      toast({
+        title: "Error",
+        description: "Failed to remove friend. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      // Remove from action loading set
+      setActionLoading(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(`remove-${friendshipId}`);
+        return newSet;
+      });
     }
-  }, [fetchFriendsData]);
+  }, [fetchFriendsData, toast]);
 
   // Cancel sent request
   const cancelRequest = useCallback(async (requestId) => {
+    // Add to action loading set
+    setActionLoading(prev => new Set(prev).add(`cancel-${requestId}`));
+    
     try {
       await deleteDoc(doc(db, 'friendships', requestId));
       fetchFriendsData();
+      toast({
+        title: "Request Cancelled",
+        description: "Friend request has been cancelled.",
+        variant: "default",
+      });
     } catch (error) {
       console.error('Error canceling request:', error);
+      toast({
+        title: "Error",
+        description: "Failed to cancel request. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      // Remove from action loading set
+      setActionLoading(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(`cancel-${requestId}`);
+        return newSet;
+      });
     }
-  }, [fetchFriendsData]);
+  }, [fetchFriendsData, toast]);
 
   // Get paginated users
   const getPaginatedUsers = useCallback(() => {
@@ -490,15 +594,69 @@ const Friends = () => {
     );
   };
 
+  // Skeleton component for loading state
+  const FriendsSkeleton = () => (
+    <div className="space-y-4">
+      {[...Array(3)].map((_, index) => (
+        <Card key={index}>
+          <CardContent className="flex items-center justify-between p-4">
+            <div className="flex items-center gap-3">
+              <Skeleton className="w-10 h-10 rounded-full" />
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-8 w-20" />
+              <Skeleton className="h-8 w-8" />
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="flex items-center space-x-2">
-            <Loader2 className="h-6 w-6 animate-spin" />
-            <span>Loading friends...</span>
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-4">
+            <Users className="h-8 w-8 text-blue-500" />
+            <h1 className="text-3xl font-bold">Friends</h1>
+            <Badge variant="secondary" className="text-sm">
+              Loading...
+            </Badge>
           </div>
+          <p className="text-muted-foreground">
+            Connect with friends and share your movie recommendations
+          </p>
         </div>
+
+        <Tabs value="friends" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="friends" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Friends
+            </TabsTrigger>
+            <TabsTrigger value="requests" className="flex items-center gap-2">
+              <UserPlus className="h-4 w-4" />
+              Requests
+            </TabsTrigger>
+            <TabsTrigger value="sent" className="flex items-center gap-2">
+              <Mail className="h-4 w-4" />
+              Sent
+            </TabsTrigger>
+            <TabsTrigger value="add" className="flex items-center gap-2">
+              <UserPlus className="h-4 w-4" />
+              Add Friends
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="friends" className="space-y-4">
+            <FriendsSkeleton />
+          </TabsContent>
+        </Tabs>
       </div>
     );
   }
@@ -576,9 +734,18 @@ const Friends = () => {
                         <Share2 className="h-4 w-4 mr-2" />
                         Share Lists
                       </Button>
-                      <Button variant="destructive" size="sm" onClick={() => removeFriend(friend.id)}>
-                        <UserX className="h-4 w-4" />
-                      </Button>
+                                             <Button 
+                         variant="destructive" 
+                         size="sm" 
+                         onClick={() => removeFriend(friend.id)}
+                         disabled={actionLoading.has(`remove-${friend.id}`)}
+                       >
+                         {actionLoading.has(`remove-${friend.id}`) ? (
+                           <Loader2 className="h-4 w-4 animate-spin" />
+                         ) : (
+                           <UserX className="h-4 w-4" />
+                         )}
+                       </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -617,15 +784,32 @@ const Friends = () => {
                         <p className="text-sm text-muted-foreground">{request.email}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" onClick={() => acceptFriendRequest(request.id, request.fromUser)}>
-                        <UserCheck className="h-4 w-4 mr-2" />
-                        Accept
-                      </Button>
-                      <Button variant="destructive" size="sm" onClick={() => rejectFriendRequest(request.id)}>
-                        <UserX className="h-4 w-4" />
-                      </Button>
-                    </div>
+                                         <div className="flex items-center gap-2">
+                       <Button 
+                         size="sm" 
+                         onClick={() => acceptFriendRequest(request.id, request.fromUser)}
+                         disabled={actionLoading.has(`accept-${request.id}`)}
+                       >
+                         {actionLoading.has(`accept-${request.id}`) ? (
+                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                         ) : (
+                           <UserCheck className="h-4 w-4 mr-2" />
+                         )}
+                         {actionLoading.has(`accept-${request.id}`) ? 'Accepting...' : 'Accept'}
+                       </Button>
+                       <Button 
+                         variant="destructive" 
+                         size="sm" 
+                         onClick={() => rejectFriendRequest(request.id)}
+                         disabled={actionLoading.has(`reject-${request.id}`)}
+                       >
+                         {actionLoading.has(`reject-${request.id}`) ? (
+                           <Loader2 className="h-4 w-4 animate-spin" />
+                         ) : (
+                           <UserX className="h-4 w-4" />
+                         )}
+                       </Button>
+                     </div>
                   </CardContent>
                 </Card>
               ))}
@@ -663,10 +847,19 @@ const Friends = () => {
                         <p className="text-sm text-muted-foreground">{request.email}</p>
                       </div>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => cancelRequest(request.id)}>
-                      <UserX className="h-4 w-4 mr-2" />
-                      Cancel
-                    </Button>
+                                         <Button 
+                       variant="outline" 
+                       size="sm" 
+                       onClick={() => cancelRequest(request.id)}
+                       disabled={actionLoading.has(`cancel-${request.id}`)}
+                     >
+                       {actionLoading.has(`cancel-${request.id}`) ? (
+                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                       ) : (
+                         <UserX className="h-4 w-4 mr-2" />
+                       )}
+                       {actionLoading.has(`cancel-${request.id}`) ? 'Cancelling...' : 'Cancel'}
+                     </Button>
                   </CardContent>
                 </Card>
               ))}
@@ -692,23 +885,40 @@ const Friends = () => {
                    onChange={(e) => setSearchQuery(e.target.value)}
                    className="flex-1"
                  />
-                 <Button type="submit" disabled={searching}>
-                   {searching ? (
-                     <Loader2 className="h-4 w-4 animate-spin" />
-                   ) : (
-                     <Search className="h-4 w-4" />
-                   )}
-                 </Button>
+                                   <Button type="submit" disabled={searching}>
+                    {searching ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Search className="h-4 w-4" />
+                    )}
+                    {searching ? 'Searching...' : 'Search'}
+                  </Button>
                </form>
 
-              {searching ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="flex items-center space-x-2">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                    <span>Loading users...</span>
-                  </div>
-                </div>
-              ) : searchQuery.trim() ? (
+                             {searching ? (
+                 <div className="space-y-4">
+                   <div className="flex items-center justify-between">
+                     <Skeleton className="h-5 w-32" />
+                     <Skeleton className="h-8 w-24" />
+                   </div>
+                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                     {[...Array(6)].map((_, index) => (
+                       <Card key={index} className="hover:shadow-md transition-shadow">
+                         <CardContent className="flex items-center justify-between p-4">
+                           <div className="flex items-center gap-3">
+                             <Skeleton className="w-12 h-12 rounded-full" />
+                             <div className="flex-1 min-w-0 space-y-2">
+                               <Skeleton className="h-4 w-24" />
+                               <Skeleton className="h-3 w-20" />
+                             </div>
+                           </div>
+                           <Skeleton className="h-8 w-16" />
+                         </CardContent>
+                       </Card>
+                     ))}
+                   </div>
+                 </div>
+               ) : searchQuery.trim() ? (
                 // Show search results
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -803,17 +1013,47 @@ const Friends = () => {
                       Page {currentPage} of {totalPages}
                     </p>
                   </div>
-                  {allUsers.length === 0 ? (
-                    <Card>
-                      <CardContent className="flex flex-col items-center justify-center py-8">
-                        <Users className="h-12 w-12 text-muted-foreground mb-4" />
-                        <h3 className="text-lg font-semibold mb-2">No users found</h3>
-                        <p className="text-muted-foreground text-center">
-                          No other users are registered yet
-                        </p>
-                      </CardContent>
-                    </Card>
-                  ) : (
+                                     {searching ? (
+                     <div className="space-y-4">
+                       <div className="flex items-center justify-between">
+                         <Skeleton className="h-5 w-32" />
+                         <Skeleton className="h-4 w-20" />
+                       </div>
+                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                         {[...Array(6)].map((_, index) => (
+                           <Card key={index} className="hover:shadow-md transition-shadow">
+                             <CardContent className="flex items-center justify-between p-4">
+                               <div className="flex items-center gap-3">
+                                 <Skeleton className="w-12 h-12 rounded-full" />
+                                 <div className="flex-1 min-w-0 space-y-2">
+                                   <Skeleton className="h-4 w-24" />
+                                   <Skeleton className="h-3 w-20" />
+                                 </div>
+                               </div>
+                               <Skeleton className="h-8 w-16" />
+                             </CardContent>
+                           </Card>
+                         ))}
+                       </div>
+                       <div className="flex items-center justify-center space-x-2 mt-6">
+                         <Skeleton className="h-8 w-16" />
+                         <Skeleton className="h-8 w-8" />
+                         <Skeleton className="h-8 w-8" />
+                         <Skeleton className="h-8 w-8" />
+                         <Skeleton className="h-8 w-16" />
+                       </div>
+                     </div>
+                   ) : allUsers.length === 0 ? (
+                     <Card>
+                       <CardContent className="flex flex-col items-center justify-center py-8">
+                         <Users className="h-12 w-12 text-muted-foreground mb-4" />
+                         <h3 className="text-lg font-semibold mb-2">No users found</h3>
+                         <p className="text-muted-foreground text-center">
+                           No other users are registered yet
+                         </p>
+                       </CardContent>
+                     </Card>
+                   ) : (
                     <>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {getPaginatedUsers().map((user) => (

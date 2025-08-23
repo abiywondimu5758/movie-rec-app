@@ -4,6 +4,7 @@ import { MovieProvider } from "./contexts/movieContext";
 import { SeriesProvider } from "./contexts/seriesContext";
 import { WatchlistProvider } from "./contexts/watchlistContext";
 import { ThemeProvider } from "./components/theme-provider";
+import { Toaster } from "./components/ui/toaster";
 import Header from "./components/Header";
 import Home from "./components/Home";
 import Login from "./components/Auth/Login";
@@ -31,6 +32,7 @@ function App() {
           <SeriesProvider>
             <WatchlistProvider>
               <AppContent />
+              <Toaster />
             </WatchlistProvider>
           </SeriesProvider>
         </MovieProvider>
