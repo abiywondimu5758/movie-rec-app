@@ -10,17 +10,21 @@ import { Label } from '../ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
+import { useToast } from '../../hooks/use-toast';
 import { 
   MessageCircle, 
   Users, 
   Plus, 
   Send, 
   UserPlus,
-  Search
+  Search,
+  UserCheck,
+  UserX
 } from 'lucide-react';
 
 const Chat = () => {
   const { currentUser } = useAuth();
+  const { toast } = useToast();
   const [privateChats, setPrivateChats] = useState([]);
   const [groupChats, setGroupChats] = useState([]);
   const [newChatEmail, setNewChatEmail] = useState('');
@@ -59,6 +63,26 @@ const Chat = () => {
     }
   }, [currentUser?.uid]);
 
+  // Check if two users are friends
+  const checkIfFriends = useCallback(async (userId1, userId2) => {
+    try {
+      const friendshipQuery = query(
+        collection(db, 'friendships'),
+        where('status', '==', 'accepted'),
+        where('users', 'array-contains', userId1)
+      );
+      const friendshipSnapshot = await getDocs(friendshipQuery);
+      
+      return friendshipSnapshot.docs.some(doc => {
+        const data = doc.data();
+        return data.users.includes(userId2);
+      });
+    } catch (error) {
+      console.error('Error checking friendship status:', error);
+      return false;
+    }
+  }, []);
+
   const createPrivateChat = useCallback(async () => {
     const userEmail = newChatEmail.trim();
     if (!userEmail) return;
@@ -68,25 +92,50 @@ const Chat = () => {
       const usersQuery = query(collection(db, 'users'), where('email', '==', userEmail));
       const userSnapshot = await getDocs(usersQuery);
       if (userSnapshot.empty) {
-        alert('User not found');
+        toast({
+          title: "User Not Found",
+          description: "No user found with that email address.",
+          variant: "destructive",
+        });
         return;
       }
 
       const userId = userSnapshot.docs[0].id;
+      
+      // Check if users are friends
+      const areFriends = await checkIfFriends(currentUser.uid, userId);
+      if (!areFriends) {
+        toast({
+          title: "Friends Only",
+          description: "You can only start private chats with your friends. Visit the Friends page to add them first!",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const chatDoc = await addDoc(collection(db, 'chats'), {
         type: 'private',
         members: [currentUser.uid, userId],
       });
 
       setNewChatEmail('');
+      toast({
+        title: "Private Chat Created",
+        description: "Your private chat has been created successfully!",
+        variant: "success",
+      });
       navigate(`/private-chat/${chatDoc.id}`);
     } catch (error) {
       console.error('Error creating private chat:', error);
-      alert('Failed to create private chat');
+      toast({
+        title: "Error",
+        description: "Failed to create private chat. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsCreatingPrivate(false);
     }
-  }, [newChatEmail, currentUser?.uid, navigate]);
+  }, [newChatEmail, currentUser?.uid, navigate, checkIfFriends, toast]);
 
   const createGroupChat = useCallback(async () => {
     const emails = newGroupEmails.split(',').map(email => email.trim());
@@ -97,11 +146,35 @@ const Chat = () => {
       const usersQuery = query(collection(db, 'users'), where('email', 'in', emails));
       const userSnapshot = await getDocs(usersQuery);
       if (userSnapshot.empty) {
-        alert('Users not found');
+        toast({
+          title: "Users Not Found",
+          description: "No users found with those email addresses.",
+          variant: "destructive",
+        });
         return;
       }
 
       const userIds = userSnapshot.docs.map(doc => doc.id);
+      
+      // Check if all users are friends with the current user
+      const nonFriends = [];
+      for (const userId of userIds) {
+        const areFriends = await checkIfFriends(currentUser.uid, userId);
+        if (!areFriends) {
+          const userData = userSnapshot.docs.find(doc => doc.id === userId)?.data();
+          nonFriends.push(userData?.email || userId);
+        }
+      }
+
+      if (nonFriends.length > 0) {
+        toast({
+          title: "Friends Only",
+          description: `You can only add friends to group chats. The following users are not your friends: ${nonFriends.join(', ')}. Visit the Friends page to add them first!`,
+          variant: "destructive",
+        });
+        return;
+      }
+
       userIds.push(currentUser.uid);
 
       const chatDoc = await addDoc(collection(db, 'chats'), {
@@ -112,14 +185,23 @@ const Chat = () => {
 
       setNewGroupName('');
       setNewGroupEmails('');
+      toast({
+        title: "Group Chat Created",
+        description: "Your group chat has been created successfully!",
+        variant: "success",
+      });
       navigate(`/group-chat/${chatDoc.id}`);
     } catch (error) {
       console.error('Error creating group chat:', error);
-      alert('Failed to create group chat');
+      toast({
+        title: "Error",
+        description: "Failed to create group chat. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsCreatingGroup(false);
     }
-  }, [newGroupName, newGroupEmails, currentUser?.uid, navigate]);
+  }, [newGroupName, newGroupEmails, currentUser?.uid, navigate, checkIfFriends, toast]);
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-6xl">
@@ -141,7 +223,7 @@ const Chat = () => {
               Private Chats
             </CardTitle>
             <CardDescription>
-              One-on-one conversations with other users
+              One-on-one conversations with your friends only
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -172,7 +254,7 @@ const Chat = () => {
               <div className="text-center py-8 text-muted-foreground">
                 <MessageCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p>No private chats yet</p>
-                <p className="text-sm">Start a conversation below</p>
+                <p className="text-sm">Start a conversation with a friend below</p>
               </div>
             )}
 
@@ -180,12 +262,15 @@ const Chat = () => {
 
             {/* Create Private Chat */}
             <div className="space-y-3">
-              <Label htmlFor="private-email">Start a private chat</Label>
+              <Label htmlFor="private-email" className="flex items-center gap-2">
+                <UserCheck className="h-4 w-4" />
+                Start a private chat with a friend
+              </Label>
               <div className="flex gap-2">
                 <Input
                   id="private-email"
                   type="email"
-                  placeholder="Enter user's email"
+                  placeholder="Enter friend's email"
                   value={newChatEmail}
                   onChange={(e) => setNewChatEmail(e.target.value)}
                   className="flex-1"
@@ -202,6 +287,12 @@ const Chat = () => {
                   )}
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground">
+                You can only start private chats with users who are your friends. 
+                <Link to="/friends" className="text-blue-500 hover:underline ml-1">
+                  Manage friends →
+                </Link>
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -214,7 +305,7 @@ const Chat = () => {
               Group Chats
             </CardTitle>
             <CardDescription>
-              Group conversations with multiple users
+              Group conversations with your friends only
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -245,7 +336,7 @@ const Chat = () => {
               <div className="text-center py-8 text-muted-foreground">
                 <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p>No group chats yet</p>
-                <p className="text-sm">Create a group below</p>
+                <p className="text-sm">Create a group with friends below</p>
               </div>
             )}
 
@@ -253,7 +344,10 @@ const Chat = () => {
 
             {/* Create Group Chat */}
             <div className="space-y-3">
-              <Label htmlFor="group-name">Create a group chat</Label>
+              <Label htmlFor="group-name" className="flex items-center gap-2">
+                <UserCheck className="h-4 w-4" />
+                Create a group chat with friends
+              </Label>
               <Input
                 id="group-name"
                 type="text"
@@ -263,7 +357,7 @@ const Chat = () => {
               />
               <Input
                 type="text"
-                placeholder="Enter emails separated by commas"
+                placeholder="Enter friends' emails separated by commas"
                 value={newGroupEmails}
                 onChange={(e) => setNewGroupEmails(e.target.value)}
               />
@@ -284,6 +378,12 @@ const Chat = () => {
                   </>
                 )}
               </Button>
+              <p className="text-xs text-muted-foreground">
+                You can only add users who are your friends to group chats. 
+                <Link to="/friends" className="text-blue-500 hover:underline ml-1">
+                  Manage friends →
+                </Link>
+              </p>
             </div>
           </CardContent>
         </Card>
