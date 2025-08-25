@@ -1,6 +1,9 @@
 import { useAuth } from "../../contexts/authContext";
+import { useNotifications } from "../../contexts/notificationContext";
 import { Button } from "../ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { Badge } from "../ui/badge";
+import NotificationDropdown from "./NotificationDropdown";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +37,10 @@ import { doSignOut } from "../../Auth";
 const Header = () => {
   const navigate = useNavigate();
   const { userLoggedIn, currentUser } = useAuth();
+  const { unreadCount, systemNotificationCount } = useNotifications();
+  
+  console.log('Header - unreadCount:', unreadCount);
+  console.log('Header - systemNotificationCount:', systemNotificationCount);
 
   const handleCategoryClick = useCallback((category) => {
     navigate(`/${category.toLowerCase()}`);
@@ -140,10 +147,18 @@ const Header = () => {
                 variant="ghost"
                 size="sm"
                 onClick={() => navigate("/chat")}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 relative"
               >
                 <MessageCircle className="h-4 w-4" />
                 Chat
+                {unreadCount > 0 && (
+                  <Badge 
+                    variant="default" 
+                    className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 text-xs flex items-center justify-center bg-blue-500 hover:bg-blue-600"
+                  >
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </Badge>
+                )}
               </Button>
             </nav>
           )}
@@ -151,6 +166,7 @@ const Header = () => {
 
         {/* User Actions */}
         <div className="flex items-center space-x-2">
+          <NotificationDropdown />
           <ThemeToggle />
           
           {userLoggedIn ? (
@@ -193,10 +209,22 @@ const Header = () => {
                   <History className="mr-2 h-4 w-4" />
                   <span>History</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate("/chat")}>
-                  <List className="mr-2 h-4 w-4" />
-                  <span>Chat</span>
-                </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => navigate("/chat")} className="relative">
+                    <List className="mr-2 h-4 w-4" />
+                    <span>Chat</span>
+                    {unreadCount > 0 && (
+                      <Badge 
+                        variant="default" 
+                        className="ml-auto h-5 w-5 rounded-full p-0 text-xs flex items-center justify-center bg-blue-500 hover:bg-blue-600"
+                      >
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </Badge>
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/group-chat")}>
+                    <Users className="mr-2 h-4 w-4" />
+                    <span>Group Chat</span>
+                  </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />

@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "./contexts/authContext";
 import { MovieProvider } from "./contexts/movieContext";
 import { SeriesProvider } from "./contexts/seriesContext";
 import { WatchlistProvider } from "./contexts/watchlistContext";
+import { NotificationProvider } from "./contexts/notificationContext";
 import { ThemeProvider } from "./components/theme-provider";
 import { Toaster } from "./components/ui/toaster";
 import Header from "./components/Header";
@@ -28,14 +29,16 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <MovieProvider>
-          <SeriesProvider>
-            <WatchlistProvider>
-              <AppContent />
-              <Toaster />
-            </WatchlistProvider>
-          </SeriesProvider>
-        </MovieProvider>
+        <NotificationProvider>
+          <MovieProvider>
+            <SeriesProvider>
+              <WatchlistProvider>
+                <AppContent />
+                <Toaster />
+              </WatchlistProvider>
+            </SeriesProvider>
+          </MovieProvider>
+        </NotificationProvider>
       </AuthProvider>
     </ThemeProvider>
   );
@@ -111,11 +114,15 @@ function AppContent() {
       element: <GlobalChat />,
     },
     {
-      path: "/private-chat",
+      path: "/private-chat/:id",
       element: <PrivateChat />,
     },
     {
       path: "/group-chat",
+      element: <GroupChat />,
+    },
+    {
+      path: "/group-chat/:id",
       element: <GroupChat />,
     },
   ];
